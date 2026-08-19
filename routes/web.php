@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AboutController;
+use App\Http\Controllers\BrandingAssetController;
 use App\Http\Controllers\ChartController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\HomeController;
@@ -23,6 +24,12 @@ Route::get('/install', [InstallerController::class, 'index'])->name('installer.i
 Route::post('/install', [InstallerController::class, 'store'])->name('installer.store');
 Route::post('/install/check-database', [InstallerController::class, 'checkDatabase'])->name('installer.check-database');
 Route::get('/install/complete', [InstallerController::class, 'complete'])->name('installer.complete');
+
+// Assets de identidade visual. Esta rota mantém logos e favicon acessíveis
+// mesmo quando o document root do servidor aponta para a raiz do projeto.
+Route::get('/uploads/branding/{filename}', BrandingAssetController::class)
+    ->where('filename', '[A-Za-z0-9._-]+')
+    ->name('branding.asset');
 
 // Página inicial pública
 Route::get('/', [HomeController::class, 'index'])->name('home');
