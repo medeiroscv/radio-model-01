@@ -23,6 +23,7 @@ interface Station {
     muted_color?: string
     border_color?: string
     logo_primary?: string
+    logo_small?: string
     favicon?: string
     dark_mode_enabled?: boolean
 }
@@ -132,7 +133,10 @@ const canonical = computed(() => String(page.props.canonical ?? '') || window.lo
         <header class="border-b" :style="{ borderColor: 'var(--border)' }">
             <div class="container-app flex items-center justify-between gap-6 py-4">
                 <Link href="/" class="shrink-0">
-                    <img v-if="station?.logo_primary" :src="station.logo_primary" :alt="station.name" class="h-10 w-auto" />
+                    <template v-if="station?.logo_primary || station?.logo_small">
+                        <img v-if="station?.logo_primary" :src="station.logo_primary" :alt="station.name" class="hidden sm:block h-10 w-auto max-w-[220px] object-contain" />
+                        <img :src="station.logo_small || station.logo_primary" :alt="station.name" class="sm:hidden h-9 w-auto max-w-[150px] object-contain" />
+                    </template>
                     <div v-else class="flex items-baseline gap-2">
                         <span class="text-xl font-bold tracking-tight">{{ station?.name || 'Rádio' }}</span>
                         <span v-if="station?.frequency" class="text-xs font-semibold text-white bg-[var(--accent)] rounded-full px-2 py-0.5">{{ station.frequency }}</span>
