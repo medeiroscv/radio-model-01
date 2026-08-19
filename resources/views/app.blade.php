@@ -5,9 +5,12 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
-        @inertiaHead
-
         <title inertia>{{ config('app.name', 'RadioCMS') }}</title>
+
+        @if (! empty($page['props']['station']['favicon']))
+            <link rel="icon" href="{{ $page['props']['station']['favicon'] }}">
+            <link rel="shortcut icon" href="{{ $page['props']['station']['favicon'] }}">
+        @endif
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
