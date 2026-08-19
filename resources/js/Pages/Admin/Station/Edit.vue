@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useForm } from '@inertiajs/vue3'
 import AdminLayout from '../../../Layouts/AdminLayout.vue'
 
@@ -49,9 +50,14 @@ const form = useForm({
     phone: props.station?.phone ?? '',
     whatsapp: props.station?.whatsapp ?? '',
     address: props.station?.address ?? '',
-    logo_primary: props.station?.logo_primary ?? '',
-    logo_small: props.station?.logo_small ?? '',
-    favicon: props.station?.favicon ?? '',
+
+    logo_primary_upload: null as File | null,
+    logo_small_upload: null as File | null,
+    favicon_upload: null as File | null,
+    remove_logo_primary: false,
+    remove_logo_small: false,
+    remove_favicon: false,
+
     primary_color: props.station?.primary_color ?? '#111827',
     accent_color: props.station?.accent_color ?? '#ef4444',
     background_color: props.station?.background_color ?? '#ffffff',
@@ -65,8 +71,63 @@ const form = useForm({
     floating_player_enabled: props.station?.floating_player_enabled ?? true,
 })
 
+const logoPrimaryPreview = ref(props.station?.logo_primary ?? '')
+const logoSmallPreview = ref(props.station?.logo_small ?? '')
+const faviconPreview = ref(props.station?.favicon ?? '')
+
+function fileFromEvent(event: Event): File | null {
+    return (event.target as HTMLInputElement).files?.[0] ?? null
+}
+
+function previewFile(file: File | null, target: typeof logoPrimaryPreview) {
+    if (!file) return
+    target.value = URL.createObjectURL(file)
+}
+
+function selectLogoPrimary(event: Event) {
+    const file = fileFromEvent(event)
+    form.logo_primary_upload = file
+    form.remove_logo_primary = false
+    previewFile(file, logoPrimaryPreview)
+}
+
+function selectLogoSmall(event: Event) {
+    const file = fileFromEvent(event)
+    form.logo_small_upload = file
+    form.remove_logo_small = false
+    previewFile(file, logoSmallPreview)
+}
+
+function selectFavicon(event: Event) {
+    const file = fileFromEvent(event)
+    form.favicon_upload = file
+    form.remove_favicon = false
+    previewFile(file, faviconPreview)
+}
+
+function removeLogoPrimary() {
+    form.logo_primary_upload = null
+    form.remove_logo_primary = true
+    logoPrimaryPreview.value = ''
+}
+
+function removeLogoSmall() {
+    form.logo_small_upload = null
+    form.remove_logo_small = true
+    logoSmallPreview.value = ''
+}
+
+function removeFavicon() {
+    form.favicon_upload = null
+    form.remove_favicon = true
+    faviconPreview.value = ''
+}
+
 function submit() {
-    form.post('/admin/station')
+    form.post('/admin/station', {
+        forceFormData: true,
+        preserveScroll: true,
+    })
 }
 
 const fonts = ['Inter', 'Roboto', 'Poppins', 'Montserrat', 'Open Sans', 'Lato', 'Nunito', 'Ubuntu', 'Merriweather', 'Playfair Display']
@@ -82,7 +143,7 @@ const buttonStyles = [
     <AdminLayout>
         <div class="mb-8">
             <h1 class="text-2xl font-bold">Identidade da Rádio</h1>
-            <p class="text-sm text-[var(--muted)]">Informações gerais e tema visual do site</p>
+            <p class="text-sm text-[var(--muted)]">Informações gerais, logomarcas e tema visual do site</p>
         </div>
 
         <form @submit.prevent="submit" class="space-y-6 max-w-4xl">
@@ -156,20 +217,55 @@ const buttonStyles = [
                 </div>
             </div>
 
-            <div class="rounded-2xl border border-[var(--border)] bg-[var(--background)] p-4 space-y-4">
-                <h2 class="font-semibold">Logos e ícone</h2>
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium mb-1">Logo principal</label>
-                        <input v-model="form.logo_primary" type="url" class="input-app w-full" placeholder="https://..." />
+            <div class="rounded-2xl border border-[var(--border)] bg-[var(--background)] p-4 space-y-5">
+                <div>
+                    <h2 class="font-semibold">Logos e ícone</h2>
+                    <p class="text-xs text-[var(--muted)] mt-1">
+                        Envie os arquivos diretamente. As imagens ficam armazenadas no próprio site e são preservadas nas atualizações.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="rounded-xl border border-[var(--border)] p-4 space-y-3">
+                        <div>
+                            <p class="text-sm font-semibold">Logo principal</p>
+                            <p class="text-xs text-[var(--muted)]">Usada no cabeçalho do site. PNG, JPG, WEBP ou GIF, até 8 MB.</p>
+                        </div>
+                        <div class="h-28 rounded-xl bg-[var(--surface)] flex items-center justify-center p-3 overflow-hidden">
+                            <img v-if="logoPrimaryPreview" :src="logoPrimaryPreview" alt="Prévia da logo principal" class="max-h-full max-w-full object-contain" />
+                            <span v-else class="text-xs text-[var(--muted)]">Nenhuma imagem</span>
+                        </div>
+                        <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="block w-full text-xs" @change="selectLogoPrimary" />
+                        <p v-if="form.errors.logo_primary_upload" class="text-xs text-red-600">{{ form.errors.logo_primary_upload }}</p>
+                        <button v-if="logoPrimaryPreview" type="button" class="text-xs font-semibold text-red-600" @click="removeLogoPrimary">Remover logo principal</button>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium mb-1">Logo pequeno</label>
-                        <input v-model="form.logo_small" type="url" class="input-app w-full" placeholder="https://..." />
+
+                    <div class="rounded-xl border border-[var(--border)] p-4 space-y-3">
+                        <div>
+                            <p class="text-sm font-semibold">Logo pequeno</p>
+                            <p class="text-xs text-[var(--muted)]">Versão compacta para telas menores. PNG, JPG, WEBP ou GIF, até 4 MB.</p>
+                        </div>
+                        <div class="h-28 rounded-xl bg-[var(--surface)] flex items-center justify-center p-3 overflow-hidden">
+                            <img v-if="logoSmallPreview" :src="logoSmallPreview" alt="Prévia da logo pequena" class="max-h-full max-w-full object-contain" />
+                            <span v-else class="text-xs text-[var(--muted)]">Nenhuma imagem</span>
+                        </div>
+                        <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="block w-full text-xs" @change="selectLogoSmall" />
+                        <p v-if="form.errors.logo_small_upload" class="text-xs text-red-600">{{ form.errors.logo_small_upload }}</p>
+                        <button v-if="logoSmallPreview" type="button" class="text-xs font-semibold text-red-600" @click="removeLogoSmall">Remover logo pequeno</button>
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium mb-1">Favicon</label>
-                        <input v-model="form.favicon" type="url" class="input-app w-full" placeholder="https://..." />
+
+                    <div class="rounded-xl border border-[var(--border)] p-4 space-y-3">
+                        <div>
+                            <p class="text-sm font-semibold">Favicon</p>
+                            <p class="text-xs text-[var(--muted)]">Ícone da aba do navegador. PNG, ICO, JPG ou WEBP, até 2 MB.</p>
+                        </div>
+                        <div class="h-28 rounded-xl bg-[var(--surface)] flex items-center justify-center p-3 overflow-hidden">
+                            <img v-if="faviconPreview" :src="faviconPreview" alt="Prévia do favicon" class="h-16 w-16 object-contain" />
+                            <span v-else class="text-xs text-[var(--muted)]">Nenhum ícone</span>
+                        </div>
+                        <input type="file" accept="image/png,image/x-icon,image/vnd.microsoft.icon,image/jpeg,image/webp,.ico" class="block w-full text-xs" @change="selectFavicon" />
+                        <p v-if="form.errors.favicon_upload" class="text-xs text-red-600">{{ form.errors.favicon_upload }}</p>
+                        <button v-if="faviconPreview" type="button" class="text-xs font-semibold text-red-600" @click="removeFavicon">Remover favicon</button>
                     </div>
                 </div>
             </div>
@@ -214,7 +310,9 @@ const buttonStyles = [
                 </label>
             </div>
 
-            <button type="submit" class="btn-accent" :disabled="form.processing">{{ form.processing ? 'Salvando...' : 'Salvar configurações' }}</button>
+            <button type="submit" class="btn-accent" :disabled="form.processing">
+                {{ form.processing ? 'Salvando...' : 'Salvar configurações' }}
+            </button>
         </form>
     </AdminLayout>
 </template>
