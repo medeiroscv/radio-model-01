@@ -8,6 +8,7 @@ use App\Models\Setting;
 use App\Models\SocialLink;
 use App\Models\Station;
 use App\Services\Streaming\StreamingService;
+use App\Support\BrandingAsset;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 use Illuminate\Support\Facades\DB;
@@ -81,9 +82,9 @@ class HandleInertiaRequests extends Middleware
                 'phone' => $station->phone,
                 'whatsapp' => $station->whatsapp,
                 'address' => $station->address,
-                'logo_primary' => $station->logo_primary,
-                'logo_small' => $station->logo_small,
-                'favicon' => $station->favicon,
+                'logo_primary' => BrandingAsset::url($station->logo_primary, $request),
+                'logo_small' => BrandingAsset::url($station->logo_small, $request),
+                'favicon' => BrandingAsset::url($station->favicon, $request),
                 'primary_color' => $station->primary_color,
                 'secondary_color' => $station->secondary_color,
                 'accent_color' => $station->accent_color,
