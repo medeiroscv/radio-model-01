@@ -1,0 +1,69 @@
+name: Build station branding upload
+
+on:
+  push:
+    branches:
+      - chatgpt/station-branding-upload
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/station-branding-upload
+          fetch-depth: 0
+
+      - name: Wire small logo into public header
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('resources/js/Layouts/AppLayout.vue')
+          text = path.read_text()
+
+          old_interface = "    logo_primary?: string\n    favicon?: string"
+          new_interface = "    logo_primary?: string\n    logo_small?: string\n    favicon?: string"
+          if old_interface not in text and new_interface not in text:
+              raise SystemExit('Station logo interface marker not found')
+          text = text.replace(old_interface, new_interface, 1)
+
+          old_header = '''                <Link href="/" class="shrink-0">\n                    <img v-if="station?.logo_primary" :src="station.logo_primary" :alt="station.name" class="h-10 w-auto" />\n                    <div v-else class="flex items-baseline gap-2">'''
+          new_header = '''                <Link href="/" class="shrink-0">\n                    <template v-if="station?.logo_primary || station?.logo_small">\n                        <img v-if="station?.logo_primary" :src="station.logo_primary" :alt="station.name" class="hidden sm:block h-10 w-auto max-w-[220px] object-contain" />\n                        <img :src="station.logo_small || station.logo_primary" :alt="station.name" class="sm:hidden h-9 w-auto max-w-[150px] object-contain" />\n                    </template>\n                    <div v-else class="flex items-baseline gap-2">'''
+          if old_header not in text and new_header not in text:
+              raise SystemExit('Public header logo marker not found')
+          text = text.replace(old_header, new_header, 1)
+
+          path.write_text(text)
+          PY
+
+      - name: PHP syntax check
+        run: php -l app/Http/Controllers/Admin/StationController.php
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck and build
+        run: npm run build
+
+      - name: Commit source integration and compiled assets
+        run: |
+          if git diff --quiet -- resources/js/Layouts/AppLayout.vue public/build; then
+            echo "Nothing to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add resources/js/Layouts/AppLayout.vue public/build
+          git commit -m "build: integrar logos da radio no frontend"
+          git push origin HEAD:chatgpt/station-branding-upload
