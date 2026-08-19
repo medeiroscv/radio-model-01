@@ -107,7 +107,7 @@ const groupsWithPermission = computed(() =>
             <!-- Sidebar -->
             <aside :class="['fixed inset-y-0 left-0 top-16 z-30 w-64 border-r border-[var(--border)] bg-[var(--background)] p-4 transition-transform lg:sticky lg:translate-x-0 lg:h-[calc(100vh-4rem)] lg:overflow-y-auto', showingSidebar ? 'translate-x-0' : '-translate-x-full']">
                 <nav class="space-y-6">
-                    <div v-for="group in groupsWithPermission" :key="group.label" v-show="!group.items.some((i) => i.href === '/profile')">
+                    <div v-for="group in groupsWithPermission" :key="group.label">
                         <p class="px-3 text-[10px] font-bold uppercase tracking-widest text-[var(--muted)] mb-2">{{ group.label }}</p>
                         <div class="space-y-1">
                             <Link
