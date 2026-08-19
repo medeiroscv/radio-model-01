@@ -25,11 +25,17 @@ Route::post('/install', [InstallerController::class, 'store'])->name('installer.
 Route::post('/install/check-database', [InstallerController::class, 'checkDatabase'])->name('installer.check-database');
 Route::get('/install/complete', [InstallerController::class, 'complete'])->name('installer.complete');
 
-// Assets de identidade visual. Esta rota mantém logos e favicon acessíveis
-// mesmo quando o document root do servidor aponta para a raiz do projeto.
-Route::get('/uploads/branding/{filename}', BrandingAssetController::class)
+// Assets de identidade visual. A URL termina em /serve de propósito:
+// isso impede que regras de arquivos estáticos do Nginx interceptem PNG/JPG/ICO
+// antes que a requisição chegue ao Laravel.
+Route::get('/branding-assets/{filename}/serve', BrandingAssetController::class)
     ->where('filename', '[A-Za-z0-9._-]+')
     ->name('branding.asset');
+
+// Compatibilidade com instalações que já utilizavam a URL antiga.
+Route::get('/uploads/branding/{filename}', BrandingAssetController::class)
+    ->where('filename', '[A-Za-z0-9._-]+')
+    ->name('branding.asset.legacy');
 
 // Página inicial pública
 Route::get('/', [HomeController::class, 'index'])->name('home');
