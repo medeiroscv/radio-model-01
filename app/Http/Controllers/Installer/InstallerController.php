@@ -3,15 +3,13 @@
 namespace App\Http\Controllers\Installer;
 
 use App\Http\Controllers\Controller;
-use App\Models\Setting;
 use App\Models\Station;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Config;
-
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Role;
 
@@ -32,15 +30,7 @@ class InstallerController extends Controller
 
     public function requirements()
     {
-        if ($this->alreadyInstalled()) {
-            return redirect()->route('home');
-        }
-
-        return inertia('Installer/Index', [
-            'requirements' => $this->checkRequirements(),
-            'permissions' => $this->checkPermissions(),
-            'step' => 1,
-        ]);
+        return $this->index();
     }
 
     public function checkDatabase(Request $request)
@@ -69,6 +59,7 @@ class InstallerController extends Controller
 
         try {
             Config::set('database.connections.installer', $config);
+            DB::purge('installer');
             DB::connection('installer')->getPdo();
 
             return response()->json([
@@ -111,41 +102,61 @@ class InstallerController extends Controller
         ]);
 
         try {
-            // 1. Atualiza o .env
+            /*
+             * IMPORTANTE:
+             * durante a instalação, sessão/cache/fila não podem depender
+             * de tabelas que ainda não existem.
+             */
             $this->writeEnvFile([
                 'APP_NAME' => '"'.str_replace('"', '', $request->station_name).'"',
                 'APP_ENV' => 'production',
                 'APP_DEBUG' => 'false',
                 'APP_URL' => url('/'),
                 'APP_LOCALE' => 'pt_BR',
+
                 'DB_CONNECTION' => 'mysql',
                 'DB_HOST' => $request->db_host,
                 'DB_PORT' => $request->db_port,
                 'DB_DATABASE' => $request->db_database,
                 'DB_USERNAME' => $request->db_username,
-                'DB_PASSWORD' => '"'.$request->db_password.'"',
-                'SESSION_DRIVER' => 'database',
-                'QUEUE_CONNECTION' => 'database',
-                'CACHE_STORE' => 'database',
+                'DB_PASSWORD' => '"'.($request->db_password ?? '').'"',
+
+                'SESSION_DRIVER' => 'file',
+                'CACHE_STORE' => 'file',
+                'QUEUE_CONNECTION' => 'sync',
             ]);
 
-            // 2. Configura a conexão atual para o banco informado (antes de qualquer acesso ao DB)
             $this->setDatabaseConnection($request);
 
-            // 3. Gera APP_KEY se não existir
+            config()->set('session.driver', 'file');
+            config()->set('cache.default', 'file');
+            config()->set('queue.default', 'sync');
+
             if (empty(config('app.key'))) {
                 Artisan::call('key:generate', ['--force' => true]);
             }
 
-            // 4. Roda migrations e seeders in-process (sem depender de proc_open/shell_exec)
+            /*
+             * In-process: não usa Symfony Process, proc_open, shell_exec,
+             * exec ou qualquer comando externo.
+             */
             $this->runArtisanCommand('migrate', ['--force' => true]);
-            $this->runArtisanCommand('db:seed', ['--class' => 'Database\Seeders\RolesAndPermissionsSeeder', '--force' => true]);
-            $this->runArtisanCommand('db:seed', ['--class' => 'Database\Seeders\SettingsSeeder', '--force' => true]);
-            $this->runArtisanCommand('db:seed', ['--class' => 'Database\Seeders\MenusSeeder', '--force' => true]);
-            $this->runArtisanCommand('db:seed', ['--class' => 'Database\Seeders\NewsCategoriesSeeder', '--force' => true]);
 
-            // 5. Cria a estação e o administrador
-            $station = Station::create([
+            $seeders = [
+                'Database\\Seeders\\RolesAndPermissionsSeeder',
+                'Database\\Seeders\\SettingsSeeder',
+                'Database\\Seeders\\MenusSeeder',
+                'Database\\Seeders\\NewsCategoriesSeeder',
+            ];
+
+            foreach ($seeders as $seeder) {
+                $this->runArtisanCommand('db:seed', [
+                    '--class' => $seeder,
+                    '--force' => true,
+                ]);
+            }
+
+            Station::create([
                 'name' => $request->station_name,
                 'frequency' => $request->frequency,
                 'slogan' => $request->slogan,
@@ -164,22 +175,32 @@ class InstallerController extends Controller
                 'is_active' => true,
             ]);
 
-            $superAdminRole = Role::findByName('super-admin');
-            $admin->assignRole($superAdminRole);
+            $admin->assignRole(Role::findByName('super-admin'));
 
-            // 6. Marca instalado
+            /*
+             * Só agora as tabelas necessárias existem.
+             */
+            $this->writeEnvFile([
+                'SESSION_DRIVER' => 'database',
+                'CACHE_STORE' => 'database',
+                'QUEUE_CONNECTION' => 'database',
+            ]);
+
             $this->markInstalled();
 
-            // 7. Limpa caches
             Artisan::call('config:clear');
             Artisan::call('cache:clear');
             Artisan::call('view:clear');
+            Artisan::call('route:clear');
 
             return redirect()->route('installer.complete');
         } catch (\Throwable $e) {
             report($e);
 
-            return back()->with('error', 'Erro durante a instalação: '.$e->getMessage());
+            return back()->with(
+                'error',
+                'Erro durante a instalação: '.$e->getMessage()
+            );
         }
     }
 
@@ -200,10 +221,9 @@ class InstallerController extends Controller
 
         try {
             DB::connection()->getPdo();
-            $station = Station::where('is_installed', true)->exists();
 
-            return $station;
-        } catch (\Throwable $e) {
+            return Station::where('is_installed', true)->exists();
+        } catch (\Throwable) {
             return false;
         }
     }
@@ -228,6 +248,7 @@ class InstallerController extends Controller
         ];
 
         $results = [];
+
         foreach ($checks as $name => $passed) {
             $results[] = [
                 'name' => $name,
@@ -253,7 +274,9 @@ class InstallerController extends Controller
             'JSON' => extension_loaded('json') ? 'carregado' : 'ausente',
             'Fileinfo' => extension_loaded('fileinfo') ? 'carregado' : 'ausente',
             'BCMath' => extension_loaded('bcmath') ? 'carregado' : 'ausente',
-            'GD ou Imagick' => extension_loaded('gd') ? 'carregado' : (extension_loaded('imagick') ? 'carregado' : 'ausente'),
+            'GD ou Imagick' => extension_loaded('gd')
+                ? 'carregado'
+                : (extension_loaded('imagick') ? 'carregado' : 'ausente'),
             'cURL' => extension_loaded('curl') ? 'carregado' : 'ausente',
             'Zip' => extension_loaded('zip') ? 'carregado' : 'ausente',
             default => '',
@@ -270,6 +293,7 @@ class InstallerController extends Controller
         ];
 
         $results = [];
+
         foreach ($paths as $name => $path) {
             if (! File::exists($path)) {
                 File::makeDirectory($path, 0755, true, true);
@@ -288,12 +312,21 @@ class InstallerController extends Controller
     protected function writeEnvFile(array $values): void
     {
         $envPath = base_path('.env');
-        $content = File::exists($envPath) ? File::get($envPath) : File::get(base_path('.env.example'));
+
+        $content = File::exists($envPath)
+            ? File::get($envPath)
+            : File::get(base_path('.env.example'));
 
         foreach ($values as $key => $value) {
-            $content = preg_replace("/^{$key}=.*$/m", "{$key}={$value}", $content);
+            $pattern = '/^'.preg_quote($key, '/').'=.*$/m';
 
-            if (! str_contains($content, "{$key}=")) {
+            if (preg_match($pattern, $content)) {
+                $content = preg_replace(
+                    $pattern,
+                    "{$key}={$value}",
+                    $content
+                );
+            } else {
                 $content .= PHP_EOL."{$key}={$value}";
             }
         }
@@ -311,21 +344,28 @@ class InstallerController extends Controller
         config()->set('database.connections.mysql.password', $request->db_password ?? '');
 
         DB::purge('mysql');
+        DB::reconnect('mysql')->getPdo();
     }
 
-    protected function runArtisanCommand(string $command, array $parameters = []): void
-    {
+    protected function runArtisanCommand(
+        string $command,
+        array $parameters = []
+    ): void {
         $exitCode = Artisan::call($command, $parameters);
 
         if ($exitCode !== 0) {
-            $error = trim(Artisan::output());
-
-            throw new \RuntimeException('Falha ao executar "artisan '.$command.'": '.$error);
+            throw new \RuntimeException(
+                'Falha ao executar "artisan '.$command.'": '.
+                trim(Artisan::output())
+            );
         }
     }
 
     protected function markInstalled(): void
     {
-        File::put(base_path('.installed'), now()->toDateTimeString());
+        File::put(
+            base_path('.installed'),
+            now()->toDateTimeString()
+        );
     }
 }

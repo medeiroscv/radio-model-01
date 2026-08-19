@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Services\Updater\UpdateService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
@@ -16,7 +17,11 @@ class UpdateController extends Controller
     public function index(): Response
     {
         $latest = $this->updater->isConfigured()
-            ? Cache::remember('updater.latest', now()->addMinutes(10), fn () => $this->updater->latestRelease())
+            ? Cache::remember(
+                'updater.latest',
+                now()->addMinutes(10),
+                fn () => $this->updater->latestRelease()
+            )
             : null;
 
         return Inertia::render('Admin/Update/Index', [
@@ -25,6 +30,7 @@ class UpdateController extends Controller
             'currentVersion' => $this->updater->currentVersion(),
             'latest' => $latest,
             'hasUpdate' => $this->updater->hasUpdate($latest),
+            'updateStatus' => $this->updater->status(),
         ]);
     }
 
@@ -33,28 +39,65 @@ class UpdateController extends Controller
         $latest = $this->updater->latestRelease();
 
         if (! $latest) {
-            return back()->with('error', 'Não foi possível consultar o GitHub. Verifique o UPDATE_REPO e tente novamente.');
+            return back()->with(
+                'error',
+                'Não foi possível consultar o GitHub. Verifique o UPDATE_REPO e tente novamente.'
+            );
         }
 
         Cache::put('updater.latest', $latest, now()->addMinutes(10));
 
-        if ($this->updater->hasUpdate($latest)) {
-            return back()->with('success', 'Nova versão '.$latest['version'].' disponível no GitHub.');
-        }
-
-        return back()->with('success', 'Você já está na versão mais recente ('.$this->updater->currentVersion().').');
+        return $this->updater->hasUpdate($latest)
+            ? back()->with('success', 'Nova versão disponível no GitHub.')
+            : back()->with('success', 'Você já está na versão mais recente.');
     }
 
-    public function update(): RedirectResponse
+    public function status(): JsonResponse
+    {
+        return response()->json($this->updater->status());
+    }
+
+    public function prepare(): JsonResponse
     {
         try {
-            $result = $this->updater->update();
-
-            return back()->with('success', 'Atualização concluída! Seu site agora está na versão '.$result['version'].'.');
+            return response()->json($this->updater->prepare());
         } catch (\Throwable $e) {
             report($e);
 
-            return back()->with('error', 'Falha na atualização: '.$e->getMessage());
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
+    public function step(): JsonResponse
+    {
+        try {
+            return response()->json($this->updater->step());
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
+    public function finalize(): JsonResponse
+    {
+        try {
+            return response()->json($this->updater->finalize());
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
+    public function reset(): JsonResponse
+    {
+        try {
+            return response()->json($this->updater->resetFailed());
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json(['message' => $e->getMessage()], 422);
         }
     }
 }
