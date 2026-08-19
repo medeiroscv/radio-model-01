@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Station;
+use App\Support\BrandingAsset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -16,10 +17,17 @@ class StationController extends Controller
 {
     private const BRANDING_DIRECTORY = 'uploads/branding';
 
-    public function edit(): Response
+    public function edit(Request $request): Response
     {
+        $station = Station::query()->first() ?? new Station();
+        $payload = $station->toArray();
+
+        $payload['logo_primary'] = BrandingAsset::url($station->logo_primary, $request);
+        $payload['logo_small'] = BrandingAsset::url($station->logo_small, $request);
+        $payload['favicon'] = BrandingAsset::url($station->favicon, $request);
+
         return Inertia::render('Admin/Station/Edit', [
-            'station' => Station::query()->first() ?? new Station(),
+            'station' => $payload,
         ]);
     }
 
@@ -120,12 +128,21 @@ class StationController extends Controller
 
     protected function deleteBrandingFile(?string $path): void
     {
-        if (! $path || ! str_starts_with($path, '/'.self::BRANDING_DIRECTORY.'/')) {
+        if (! $path) {
             return;
         }
 
-        $filename = basename($path);
-        $fullPath = public_path(self::BRANDING_DIRECTORY.'/'.$filename);
+        $relative = ltrim($path, '/');
+
+        if (str_starts_with($relative, 'public/')) {
+            $relative = substr($relative, strlen('public/'));
+        }
+
+        if (! str_starts_with($relative, self::BRANDING_DIRECTORY.'/')) {
+            return;
+        }
+
+        $fullPath = public_path($relative);
 
         if (File::isFile($fullPath)) {
             File::delete($fullPath);
